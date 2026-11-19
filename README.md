@@ -1,6 +1,6 @@
-# Data Engineering Portfolio
+# Azure Databricks Playground
 
-Portfolio de ingeniería de datos orientado a plataformas Azure y analítica operacional. Las piezas muestran cuatro años de experiencia aplicada: ingestión paralela, cargas incrementales, gobierno de clusters, lakehouses y entrega de datos para SQL Server, R y Power BI.
+Portfolio de ingeniería de datos orientado a plataformas Azure y analítica operacional. Ingestión paralela, cargas incrementales, gobierno de clusters, lakehouses y entrega de datos para SQL Server, R y Power BI.
 
 > **Cómo leer este repositorio:** cada proyecto selecciona artefactos demostrativos en vez de listar todos los notebooks. Las etiquetas distinguen el contexto de la pieza:
 > - **Producción:** patrón diseñado para operación, con parametrización, observabilidad y controles.
