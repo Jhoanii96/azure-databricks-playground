@@ -1,0 +1,117 @@
+{
+	"name": "Task_DatasetRefershByList",
+	"properties": {
+		"activities": [
+			{
+				"name": "Refresh",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Read DataSetId",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Read DataSetId').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 30,
+					"activities": [
+						{
+							"name": "RefreshDataset",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Task_DatasetRefresh",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"PBIAppWorkspaceId": {
+										"value": "@item().WorkSpaceId",
+										"type": "Expression"
+									},
+									"PBIDatasetId": {
+										"value": "@item().DataSetId",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Read DataSetId",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "SELECT * \nFROM @{pipeline().parameters.DS_Schema}.@{pipeline().parameters.DS_TableName}\nWHERE [PowerBIId] in (@{pipeline().parameters.PowerBIId})\nAND [DeletedSetDate] IS NULL",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQL_AzureSqlServer",
+						"type": "DatasetReference",
+						"parameters": {
+							"Servername": {
+								"value": "@pipeline().globalParameters.WatermarkServername",
+								"type": "Expression"
+							},
+							"Database": {
+								"value": "@pipeline().globalParameters.WatermarkDatabase",
+								"type": "Expression"
+							},
+							"Schemaname": "KPI",
+							"Tablename": "PowerBIDatasets"
+						}
+					},
+					"firstRowOnly": false
+				}
+			}
+		],
+		"parameters": {
+			"DS_Schema": {
+				"type": "string",
+				"defaultValue": "KPI"
+			},
+			"DS_TableName": {
+				"type": "string",
+				"defaultValue": "PowerBIDatasets"
+			},
+			"PowerBIId": {
+				"type": "string",
+				"defaultValue": "1,2"
+			}
+		},
+		"folder": {
+			"name": "Global/Task"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-09-25T18:50:16Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

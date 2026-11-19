@@ -1,0 +1,41 @@
+resources:
+  jobs:
+    arxiv_full_data_ingestion_job:
+      name: arxiv_full_data_ingestion
+      run_as:
+        user_name: ${var.run_as_user}
+      #run_as:
+      #  service_principal_name: ${var.run_as_user}  # o ${var.sp_id}
+      
+      tags:
+        project_name: "arxiv-curator"
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../dist/*.whl
+
+      tasks:
+        - task_key: arxiv_data_ingestion
+          #environment_key: default
+          existing_cluster_id: "0109-145519-eafl5n28"  # ID del cluster existente
+          notebook_task:
+            notebook_path: ../notebooks/1.3_arxiv_data_ingestion.py
+            base_parameters:
+              env: ${bundle.target}
+              git_sha: "${var.git_sha}"
+              run_id: "{{job.run_id}}"
+
+        - task_key: arxiv_pdf_parsing
+          #environment_key: default
+          existing_cluster_id: "0109-145519-eafl5n28"  # ID del cluster existente
+          depends_on:
+            - task_key: arxiv_data_ingestion
+          notebook_task:
+            notebook_path: ../notebooks/2.2_pdf_parsing_ai_parse.py
+            base_parameters:
+              env: ${bundle.target}
+              git_sha: "${var.git_sha}"
+              run_id: "{{job.run_id}}"

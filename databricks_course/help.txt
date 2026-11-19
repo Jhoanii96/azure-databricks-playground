@@ -1,0 +1,16 @@
+# Instalar todas las dependencias
+uv sync --extra dev
+
+# Deplegar al target acc o prd 
+uv run databricks bundle deploy -t dev
+uv run databricks bundle deploy -t dev --profile AzuVel
+# o
+uv run databricks bundle deploy -t acc
+# o
+uv run databricks bundle deploy -t prd
+
+
+ruff check --fix .
+git diff --check
+pre-commit run --all-files
+

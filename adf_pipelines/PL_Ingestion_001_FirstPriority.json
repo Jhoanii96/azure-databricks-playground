@@ -1,0 +1,279 @@
+{
+	"name": "PL_Ingestion_001_FirstPriority",
+	"properties": {
+		"activities": [
+			{
+				"name": "Actual Date",
+				"description": "Get current datetime",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Read Configuration",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "CurrentDate",
+					"value": {
+						"value": "@formatDateTime(convertTimeZone(utcNow(),'UTC',pipeline().parameters.TimeZone), 'yyyy-MM-dd_HH')\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Read Configuration",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Get Cluster Id",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "SELECT * FROM @{pipeline().parameters.WatermarkSchemaname}.@{pipeline().parameters.WatermarkTablename} \nWHERE [IngestionGroup] = '@{pipeline().parameters.IngestionGroup}' AND [Site] = '@{pipeline().parameters.Site}' AND [DeletedSetDate] IS NULL",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQL_AzureSqlServer",
+						"type": "DatasetReference",
+						"parameters": {
+							"Servername": {
+								"value": "@pipeline().globalParameters.WatermarkServername",
+								"type": "Expression"
+							},
+							"Database": {
+								"value": "@pipeline().globalParameters.WatermarkDatabase",
+								"type": "Expression"
+							},
+							"Schemaname": {
+								"value": "@pipeline().parameters.WatermarkSchemaname",
+								"type": "Expression"
+							},
+							"Tablename": {
+								"value": "@pipeline().parameters.WatermarkTablename",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Configuration Items",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Actual Date",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Read Configuration').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 30,
+					"activities": [
+						{
+							"name": "Merge FirstPriority",
+							"type": "DatabricksNotebook",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"notebookPath": "/Repos/DatabricksRepo/Databricks/NEW/Ingestion/Somincor/FirstPriority/IncrementalLoad",
+								"baseParameters": {
+									"FolderRootPath": {
+										"value": "@item().DestinationFolder",
+										"type": "Expression"
+									},
+									"ActualDateTime": {
+										"value": "@variables('CurrentDate')",
+										"type": "Expression"
+									},
+									"TableName": {
+										"value": "@item().TableSourceName",
+										"type": "Expression"
+									},
+									"ColumnId": {
+										"value": "@item().ColumnId",
+										"type": "Expression"
+									},
+									"RowId": {
+										"value": "@string(item().DataPipelineId)",
+										"type": "Expression"
+									},
+									"IncrementalColumn": {
+										"value": "@item().IncrementalColumn",
+										"type": "Expression"
+									},
+									"WatermarkTable": {
+										"value": "@{pipeline().parameters.WatermarkSchemaname}.@{pipeline().parameters.WatermarkTablename}",
+										"type": "Expression"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "ADBLS_Cluster_ID",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"Cluster_Id": {
+										"value": "@activity('Get Cluster Id').output.value",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "FirstPriority Blob To Sql",
+							"type": "DatabricksNotebook",
+							"dependsOn": [
+								{
+									"activity": "Merge FirstPriority",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"notebookPath": "/Repos/DatabricksRepo/Databricks/NEW/Ingestion/Somincor/FirstPriority/BronzeToSql",
+								"baseParameters": {
+									"DestinationFolder": {
+										"value": "@item().DestinationFolder",
+										"type": "Expression"
+									},
+									"TableName": {
+										"value": "@item().TableSourceName",
+										"type": "Expression"
+									},
+									"Schema": {
+										"value": "@item().TargetSchema",
+										"type": "Expression"
+									},
+									"DatabaseTargetName": {
+										"value": "@item().DatabaseTargetName",
+										"type": "Expression"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "ADBLS_Cluster_ID",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"Cluster_Id": {
+										"value": "@activity('Get Cluster Id').output.value",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Get Cluster Id",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "GET",
+					"url": {
+						"value": "@{pipeline().globalParameters.KeyVaultUri}secrets/@{pipeline().parameters.Cluster_Id}/?api-version=7.0",
+						"type": "Expression"
+					},
+					"body": {
+						"simple": "body"
+					},
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://vault.azure.net"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"Site": {
+				"type": "string",
+				"defaultValue": "Somincor"
+			},
+			"IngestionGroup": {
+				"type": "string",
+				"defaultValue": "4100"
+			},
+			"WatermarkSchemaname": {
+				"type": "string",
+				"defaultValue": "KPI"
+			},
+			"WatermarkTablename": {
+				"type": "string",
+				"defaultValue": "DataPipeline"
+			},
+			"TimeZone": {
+				"type": "string",
+				"defaultValue": "Azores Standard Time"
+			},
+			"Cluster_Id": {
+				"type": "string",
+				"defaultValue": "databricks-cluster-01"
+			}
+		},
+		"variables": {
+			"CurrentDate": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "Somincor/Ingestion"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-05-08T22:42:13Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

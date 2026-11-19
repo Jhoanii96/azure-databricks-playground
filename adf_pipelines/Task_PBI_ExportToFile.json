@@ -1,0 +1,440 @@
+{
+	"name": "Task_PBI_ExportToFile",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get Access Token",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Get TenantId",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Get ClientId",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Get Secret",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/x-www-form-urlencoded"
+					},
+					"url": {
+						"value": "https://login.microsoftonline.com/@{activity('Get TenantId').output.value}/oauth2/token",
+						"type": "Expression"
+					},
+					"body": {
+						"value": "grant_type=client_credentials&\nclient_id=@{activity('Get ClientId').output.value}&\nclient_secret=@{encodeUriComponent(activity('Get Secret').output.value)}&\nresource=https://analysis.windows.net/powerbi/api",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Get TenantId",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "GET",
+					"url": {
+						"value": "@{pipeline().globalParameters.KeyVaultUri}secrets/@{pipeline().parameters.TenantId}/?api-version=7.0",
+						"type": "Expression"
+					},
+					"body": {
+						"simple": "body"
+					},
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://vault.azure.net"
+					}
+				}
+			},
+			{
+				"name": "Get ClientId",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "GET",
+					"url": {
+						"value": "@{pipeline().globalParameters.KeyVaultUri}secrets/@{pipeline().parameters.ClientId}/?api-version=7.0",
+						"type": "Expression"
+					},
+					"body": {
+						"simple": "body"
+					},
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://vault.azure.net"
+					}
+				}
+			},
+			{
+				"name": "Get Secret",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "GET",
+					"url": {
+						"value": "@{pipeline().globalParameters.KeyVaultUri}secrets/@{pipeline().parameters.ClientSecret}/?api-version=7.0",
+						"type": "Expression"
+					},
+					"body": {
+						"simple": "body"
+					},
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://vault.azure.net"
+					}
+				}
+			},
+			{
+				"name": "Read Reporting",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Get Access Token",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Actual Datetime",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "SELECT * FROM @{pipeline().parameters.Schema}.@{pipeline().parameters.TableName} \nWHERE [ReportGroup] = '@{pipeline().parameters.ReportGroup}' \nAND [DeletedSetDate] IS NULL ",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQL_AzureSqlServer",
+						"type": "DatasetReference",
+						"parameters": {
+							"Servername": {
+								"value": "@pipeline().globalParameters.MainServername",
+								"type": "Expression"
+							},
+							"Database": {
+								"value": "@pipeline().globalParameters.MainDatabase",
+								"type": "Expression"
+							},
+							"Schemaname": {
+								"value": "@pipeline().parameters.Schema",
+								"type": "Expression"
+							},
+							"Tablename": {
+								"value": "@pipeline().parameters.TableName",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Loop Reporting",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Read Reporting",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Read Reporting').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 10,
+					"activities": [
+						{
+							"name": "Export File",
+							"type": "WebActivity",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"method": "POST",
+								"headers": {
+									"Authorization": {
+										"value": "@{concat('Bearer ', activity('Get Access Token').output.access_token)}",
+										"type": "Expression"
+									},
+									"Accept": "application/json"
+								},
+								"url": {
+									"value": "https://api.powerbi.com/v1.0/myorg/groups/@{item().GroupId}/reports/@{item().ReportId}/ExportTo",
+									"type": "Expression"
+								},
+								"body": {
+									"value": "@if(and(not(equals(item().PageGuid, null)), equals(item().BookmarkGuid, null)), \n    concat(' {\"format\": \"', item().Format, '\", \"powerBIReportConfiguration\": { \"pages\": [ { \"pageName\": \"', item().PageGuid, '\" } ] } } '),\n    if(and(equals(item().PageGuid, null), equals(item().BookmarkGuid, null)), \n        concat('{\"format\": \"', item().Format, '\"'),\n        concat(' {\"format\": \"', item().Format, '\", \"powerBIReportConfiguration\": { \"pages\": [ { \"pageName\": \"', item().PageGuid, '\", \"bookmark\": { \"name\": \"', item().BookmarkGuid, '\" } } ] } } ')\n\n    )\n)\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Copy File To Blob",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Export File",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "BinarySource",
+									"storeSettings": {
+										"type": "HttpReadSettings",
+										"requestMethod": "GET",
+										"additionalHeaders": {
+											"value": "@{concat(string('Authorization: Bearer '), activity('Get Access Token').output.access_token)}",
+											"type": "Expression"
+										},
+										"requestTimeout": ""
+									},
+									"formatSettings": {
+										"type": "BinaryReadSettings"
+									}
+								},
+								"sink": {
+									"type": "BinarySink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "FilePowerBI",
+									"type": "DatasetReference",
+									"parameters": {
+										"GroupId": {
+											"value": "@item().GroupId",
+											"type": "Expression"
+										},
+										"ReportId": {
+											"value": "@item().ReportId",
+											"type": "Expression"
+										},
+										"ExportId": {
+											"value": "@activity('Export File').output.id",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "BlobBinary",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@pipeline().parameters.Container",
+											"type": "Expression"
+										},
+										"Directory": {
+											"value": "@{item().Site}/Reports/@{replace(item().ReportName, ' ', '_')}/@{formatDateTime(variables('Datetime'), 'yyyy/MM/dd')}/Exports",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@{replace(item().ReportName, ' ', '_')}_@{if(and(not(equals(item().PageGuid, null)), equals(item().BookmarkGuid, null)), \n    item().PageGuid,\n    if(and(equals(item().PageGuid, null), equals(item().BookmarkGuid, null)), \n        item().ReportId,item().BookmarkGuid)\n)}_@{formatDateTime(variables('Datetime'), 'yyyyMMddHHmmss')}.@{toLower(item().Format)}",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			},
+			{
+				"name": "Actual Datetime",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Datetime",
+					"value": {
+						"value": "@utcNow('yyyy-MM-ddTHH:mm:ss.fffZ')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Merge Pdf",
+				"type": "DatabricksNotebook",
+				"dependsOn": [
+					{
+						"activity": "Loop Reporting",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"notebookPath": "/Repos/DatabricksRepo/Databricks/NEW/ReportingTools/MergePDF",
+					"baseParameters": {
+						"Container": {
+							"value": "@pipeline().parameters.Container",
+							"type": "Expression"
+						},
+						"Datetime": {
+							"value": "@variables('Datetime')",
+							"type": "Expression"
+						},
+						"ReportGroup": {
+							"value": "@string(pipeline().parameters.ReportGroup)",
+							"type": "Expression"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "ADBLS_Cluster_ID",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Cluster_Id": {
+							"value": "@pipeline().parameters.Cluster_Id",
+							"type": "Expression"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"Schema": {
+				"type": "string",
+				"defaultValue": "pbi"
+			},
+			"TableName": {
+				"type": "string",
+				"defaultValue": "Reporting"
+			},
+			"ReportGroup": {
+				"type": "string",
+				"defaultValue": "1001"
+			},
+			"Container": {
+				"type": "string",
+				"defaultValue": "gold"
+			},
+			"TenantId": {
+				"type": "string",
+				"defaultValue": "opsbi-tenantid"
+			},
+			"ClientId": {
+				"type": "string",
+				"defaultValue": "opsbi-pbiclientid"
+			},
+			"ClientSecret": {
+				"type": "string",
+				"defaultValue": "opsbi-pbisecret"
+			},
+			"Cluster_Id": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"Datetime": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "Global/Task"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-04-25T04:39:46Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
